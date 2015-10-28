@@ -77,7 +77,7 @@ class ihrisSync {
     private function insertCountry($name, $code) {
         $explode = explode(" ", $name);
         $firstWord = $explode[0];  $secondWord = $explode[1];
-        $countryCode = $firstWord[0] . $secondWord[1];
+        $countryCode = $firstWord[0] . $secondWord[0];
         
         $sql = "INSERT INTO "
                 . "hippo_country "

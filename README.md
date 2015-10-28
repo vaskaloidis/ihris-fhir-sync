@@ -6,6 +6,7 @@ Once you are authenticated: for each iHRIS feature listed below, you can drop th
 
 First, configure the MySQL database:
 ```
+$sync = new ihrisSync();
 $sync->setMysqlConnection("server.ct.apelon.com", "user", "password", "ihris_manage");
 ```
 
