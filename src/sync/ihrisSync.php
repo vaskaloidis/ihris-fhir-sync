@@ -15,9 +15,10 @@ class ihrisSync {
     public function test() {
         
         $sync = new $this();
-        $sync->setMysqlConnection("hardevhim.ct.apelon.com", "dtsadminuser", "dtsadmin", "ihris_manage");
+        $sync->setMysqlConnection("hardevhim.ct.apelon.com", "ihris_manage", "apelon1", "ihris_manage");
         $sync->setFhirServer("http://40.143.220.156:8081/dtsserverws/fhir/", "dtsadminuser", "dtsadmin");
-        $sync->setFhirValueSet("valueset-c80-facilitycodes");
+        $sync->dropCountry();
+        $sync->syncCountry("valueset-c80-facilitycodes");
         
     }
     
@@ -73,7 +74,7 @@ class ihrisSync {
         mysqli_query($this->conn, $sql);
     }
     
-    public function insertCountry($name, $code) {
+    private function insertCountry($name, $code) {
         $explode = explode(" ", $name);
         $firstWord = $explode[0];  $secondWord = $explode[1];
         $countryCode = $firstWord[0] . $secondWord[1];
@@ -100,8 +101,8 @@ class ihrisSync {
             return mysqli_query($this->conn, $sql);
     }
     
-    public function syncCountry() {
-        $fhirData = $this->getFhirData('country-codes-value-set');
+    public function syncCountry($valueSet) {
+        $fhirData = $this->getFhirData($valueSet);
         
         foreach($fhirData as $f) {
             if($f->contains != null) { //Verify this works
@@ -115,8 +116,8 @@ class ihrisSync {
         mysqli_query($this->conn, $sql);
     }
     
-    public function syncRegion() {
-        $fhirData = $this->getFhirData('region-codes-value-set');
+    public function syncRegion($valueSet) {
+        $fhirData = $this->getFhirData($valueSet);
         
         foreach($fhirData as $f) {
             if($f->contains != null) { //Verify this works
@@ -126,13 +127,13 @@ class ihrisSync {
         }
     }
     
-    public function dropDistrict() {
+    public function dropDistrict($valueSet) {
         $sql = "TRUNCATE table hippo_country";
         mysqli_query($this->conn, $sql);
     }
     
     public function syncDistrict() {
-        $fhirData = $this->getFhirData('district-codes-value-set');
+        $fhirData = $this->getFhirData($valueSet);
         
         foreach($fhirData as $f) {
             if($f->contains != null) { //Verify this works
@@ -148,8 +149,42 @@ class ihrisSync {
         mysqli_query($this->conn, $sql);
     }
     
-    public function syncCounty() {
-        $fhirData = $this->getFhirData('country-codes-value-set');
+    public function syncCounty($valueSet) {
+        $fhirData = $this->getFhirData($valueSet);
+        
+        foreach($fhirData as $f) {
+            if($f->contains != null) { //Verify this works
+                //TODO: Sync County
+                //$this->insertCounty($f->display['value'], $f->display['value']);
+            }
+        }
+        
+    }
+    
+    public function dropFacility() {
+        $sql = "TRUNCATE table hippo_country";
+        mysqli_query($this->conn, $sql);
+    }
+    
+    public function syncFacility($valueSet) {
+        $fhirData = $this->getFhirData($valueSet);
+        
+        foreach($fhirData as $f) {
+            if($f->contains != null) { //Verify this works
+                //TODO: Sync County
+                //$this->insertCounty($f->display['value'], $f->display['value']);
+            }
+        }
+        
+    }
+    
+    public function dropPosition() {
+        $sql = "TRUNCATE table hippo_country";
+        mysqli_query($this->conn, $sql);
+    }
+    
+    public function syncPosition($valueSet) {
+        $fhirData = $this->getFhirData($valueSet);
         
         foreach($fhirData as $f) {
             if($f->contains != null) { //Verify this works
