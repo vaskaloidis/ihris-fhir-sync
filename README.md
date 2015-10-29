@@ -7,12 +7,12 @@ Once you are authenticated: for each iHRIS feature listed below, you can drop th
 First, configure the MySQL database:
 ```
 $sync = new ihrisSync();
-$sync->setMysqlConnection("server.ct.apelon.com", "user", "password", "ihris_manage");
+$sync->setMysqlConnection("server.ct.apelon.com", "mysql-user", "mysql-password", "ihris_mysql_db");
 ```
 
 Next, configure the FHIR server:
 ```
-$sync->setFhirServer("http://dts-server.com:8081/dtsserverws/fhir/", "username", "password");
+$sync->setFhirServer("http://dts-server.com:8081/dtsserverws/fhir/", "dts-username", "dts-password");
 ```
 
 iHRIS data that can be synced, and the corresponding FHIR value-set:
@@ -43,9 +43,9 @@ dropPosition()
 ## Insert Data
 To populate an iHRIS table with Terminology data, you must call one of the following methods and pass in the corresponding FHIR value-set that you want to use to populate the table.
 ```
-syncCountry('value-set-identifier')
-syncCounty('value-set-identifier')
-syncDistrict('value-set-identifier')
-syncRegion('value-set-identifier')
-syncFacility('value-set-identifier')
-syncPosition('value-set-identifier')
+insertCountry('value-set-identifier')
+insertCounty('value-set-identifier')
+insertDistrict('value-set-identifier')
+insertegion('value-set-identifier')
+insertFacility('value-set-identifier')
+insertPosition('value-set-identifier')

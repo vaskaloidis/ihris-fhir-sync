@@ -1,7 +1,10 @@
 <?php
 
-namespace IHRISSYNC\ihrisSync;
+namespace APELON\ihrisFhirSync;
 
+
+use Monolog\Logger;
+use Monolog\Handler\StreamHandler;
 
 /**
  * Description of ihrisSync
@@ -12,15 +15,13 @@ class ihrisSync {
     
     private $conn, $dtsServer, $dtsUser, $dtsPassword;
     
-    public function test() {
-        
-        $sync = new $this();
-        $sync->setMysqlConnection("hardevhim.ct.apelon.com", "ihris_manage", "apelon1", "ihris_manage");
-        $sync->setFhirServer("http://40.143.220.156:8081/dtsserverws/fhir/", "dtsadminuser", "dtsadmin");
-        $sync->dropCountry();
-        $sync->syncCountry("valueset-c80-facilitycodes");
-        
+    public function __construct() {
+    	$this->log = new Logger('fhir-ihris');
+    	$this->log->pushHandler(new StreamHandler('./sync.log', Logger::INFO));
+    	$this->log->addInfo("Logger Initialized");
+    	echo "ihris-sync initialized ok<br>";
     }
+    
     
     /**
      * Set the iHRIS MySql backend URL, Username, Password and the databsae 
@@ -32,7 +33,16 @@ class ihrisSync {
      * @param type $db MySQL Database Name
      */
     public function setMysqlConnection($url, $user, $password, $db) {
+    	
         $this->conn = mysqli_connect($url, $user, $password, $db);
+        
+        if(mysqli_connect_errno()) {
+        	$this->log->addError("Database Connection Failure: " . mysqli_connect_error());
+        	exit();
+        } else {
+        	$this->log->addInfo("Database OK");
+        }
+        
     }
     
     /**
@@ -53,92 +63,133 @@ class ihrisSync {
      * @param type $valueSet DTS FHIR Value-Set name to retreive
      */
     public function getFhirData($valueSet) {
-        $url = $this->dtsServer . "ValueSet/' . $valueSet . '/$expand";
+        $url = $this->dtsServer . "ValueSet/" . $valueSet . "/$" . "expand";
         $context = stream_context_create(array(
         'http' => array(
-            'header' => "Accept: application/xml" .
-                        "Authorization: Basic " . base64_encode($this->dtsUser . ":" . $this->dtsPassword)
+            'header' => "Authorization: Basic " . base64_encode($this->dtsUser . ":" . $this->dtsPassword) . "\r\n"
                 )
             )
         );
-
-        $xml = file_get_contents($url, false, $context);
-        $xml = simplexml_load_string($xml);
-        print_r($xml); //TODO: Remove after testing
-        $fhir = new SimpleXMLElement($xml);
-        return $xml->expansion;
+        try {
+        	$xml = file_get_contents($url, false, $context);
+        } catch(Exception $e) {
+        	echo "Failure connecting to DTS FHIR Server";
+        	$this->log->addError("Failure connecting to DTS FHIR Server");
+        	$this->log->addError((String) $e->getMessage() . "<br>" . $e->getTraceAsString());
+        }
+        
+        if($xml != null && $xml) {
+        	$this->log->addInfo("FHIE fetch OK");
+        	
+        	$xml = simplexml_load_string($xml);
+        	//var_dump($xml->expansion); //TODO: Remove after testing
+        	//$fhir = new SimpleXMLElement($xml);
+        	return $xml;
+        } else {
+        	$this->log->addError("Error Fetching XML using file_get_contents()");		
+        }
     }
     
     public function dropCountry() {
         $sql = "TRUNCATE table hippo_country";
-        mysqli_query($this->conn, $sql);
+        $query = mysqli_query($this->conn, $sql);
+        
+        if(!$query) {
+        	$this->log->addError("Drop Country Query Failed: " . mysqli_error($this->conn));
+        	exit();
+        } else {
+        	$this->log->addInfo("Drop Country Query OK ");
+        }
     }
     
-    private function insertCountry($name, $code) {
+    private function insertCountryQuery($id, $name, $code) {
         $explode = explode(" ", $name);
         $firstWord = $explode[0];  $secondWord = $explode[1];
         $countryCode = $firstWord[0] . $secondWord[0];
         
         $sql = "INSERT INTO "
-                . "hippo_country "
-                    . "(parent, "
-                    . "last_modified, "
-                    . "i2ce_hidden,"
-                    . "name, "
-                    . "alpha_two, "
-                    . "code, "
-                    . "primary, "
-                    . "location) "
+                . "`ihris_manage`.`hippo_country` "
+                    . "(`id`, "
+                    . "`parent`, "
+                    . "`last_modified`, "
+                    . "`i2ce_hidden`,"
+                    . "`name`, "
+                    . "`alpha_two`, "
+                    . "`code`, "
+                    . "`primary`, "
+                    . "`location`) "
                 . " VALUES ("
-                    . "NULL, "
+                	. "'country|" . $id . "', "
+                    . "'NULL', "
                     . "NOW(), "
-                    . "0, "
-                    . $name . ", "
-                    . $countryCode . ", "
-                    . $code . " "
-                    . "1, "
-                    . "1); ";
-            return mysqli_query($this->conn, $sql);
+                    . "'0', "
+                    . "'" . mysqli_real_escape_string($this->conn, $name) . "', "
+                    . "'" . mysqli_real_escape_string($this->conn, strtoupper($countryCode)) . "', "
+                    . "'" . mysqli_real_escape_string($this->conn, $code) . "', "
+                    . "'1', "
+                    . "'1') ";
+            $query = mysqli_query($this->conn, $sql);
+            
+            $this->log->addInfo("Sql:" . $sql);
+            
+            if(!$query) {
+            	$this->log->addError("Insert Country Query Failed: " . mysqli_error($this->conn));
+            	exit();
+            } else {
+            	$this->log->addInfo("Insert Country Query OK ");
+            }
     }
     
-    public function syncCountry($valueSet) {
-        $fhirData = $this->getFhirData($valueSet);
-        
-        foreach($fhirData as $f) {
-            if($f->contains != null) { //Verify this works
-                $this->insertRegion($f->display['value'], $f->display['value']);
-            }
+    public function insertCountry($valueSet) {
+        $fhirData = $this->getFhirData($valueSet)->expansion->contains;
+        $size = iterator_count($fhirData);
+        for ($x = 0; $x < $size; $x++) {
+			$f = $fhirData[$x];
+            echo "Country Inserted: " . $f->display['value'] . " - " .  $f->code['value'] . "<br>";
+            $this->insertCountryQuery($x, $f->display['value'], $f->code['value']);
         }
     }
     
     public function dropRegion() {
         $sql = "TRUNCATE table hippo_country";
-        mysqli_query($this->conn, $sql);
+        $query = mysqli_query($this->conn, $sql);
+        
+        if(!$query) {
+        	$this->log->addError("Drop Region Query Failed: " . mysqli_error($this->conn));
+        	exit();
+        } else {
+        	$this->log->addInfo("Drop Region Query OK ");
+        }
     }
     
-    public function syncRegion($valueSet) {
+    public function insertRegion($valueSet) {
         $fhirData = $this->getFhirData($valueSet);
         
         foreach($fhirData as $f) {
             if($f->contains != null) { //Verify this works
-            ////TODO: Sync Region
-                //$this->insertRegion($f->display['value'], $f->display['value']);
+            ////TODO: insert Region - $this->insertRegionQuery($f->display['value'], $f->display['value']);
             }
         }
     }
     
     public function dropDistrict($valueSet) {
         $sql = "TRUNCATE table hippo_country";
-        mysqli_query($this->conn, $sql);
+   		$query = mysqli_query($this->conn, $sql);
+        
+        if(!$query) {
+        	$this->log->addError("Drop District Query Failed: " . mysqli_error($this->conn));
+        	exit();
+        } else {
+        	$this->log->addInfo("Drop District Query OK ");
+        }
     }
     
-    public function syncDistrict() {
+    public function insertDistrict() {
         $fhirData = $this->getFhirData($valueSet);
         
         foreach($fhirData as $f) {
             if($f->contains != null) { //Verify this works
-                //$this->insertDistrict($f->display['value'], $f->display['value']);
-                //TODO: Sync District
+                //$this->insertDistrictQuery($f->display['value'], $f->display['value']); - TODO: District
             }
         }
        
@@ -146,51 +197,126 @@ class ihrisSync {
     
     public function dropCounty() {
         $sql = "TRUNCATE table hippo_country";
-        mysqli_query($this->conn, $sql);
+        $query = mysqli_query($this->conn, $sql);
+        
+        if(!$query) {
+        	$this->log->addError("Drop County Query Failed: " . mysqli_error($this->conn));
+        	exit();
+        } else {
+        	$this->log->addInfo("Drop County Query OK ");
+        }
     }
     
-    public function syncCounty($valueSet) {
+    public function insertCounty($valueSet) {
         $fhirData = $this->getFhirData($valueSet);
         
         foreach($fhirData as $f) {
             if($f->contains != null) { //Verify this works
-                //TODO: Sync County
-                //$this->insertCounty($f->display['value'], $f->display['value']);
+                //TODO: insert County - $this->insertCountyQuery($f->display['value'], $f->display['value']);
             }
         }
         
+    }
+    
+    private function insertFacilityQuery($id, $name) {
+    	$sql = "INSERT INTO "
+                . "`ihris_manage`.`hippo_facility_type` "
+                    . "(`id`, "
+                    . "`parent`, "
+                    . "`last_modified`, "
+                    . "`i2ce_hidden`,"
+                    . "`name` "
+                    . ") "
+                . " VALUES ("
+                	. "'facility|" . $id . "', "
+                    . "'NULL', "
+                    . "NOW(), "
+                    . "'0', "
+                    . "'" . mysqli_real_escape_string($this->conn, $name) . "') ";
+    	$query = mysqli_query($this->conn, $sql);
+    	
+    	$this->log->addInfo("Sql:" . $sql);
+    
+    	if(!$query) {
+    		$this->log->addError("Insert Facility Type Query Failed: " . mysqli_error($this->conn));
+    		exit();
+    	} else {
+    		$this->log->addInfo("Insert Facility Type Query OK ");
+    	}
     }
     
     public function dropFacility() {
         $sql = "TRUNCATE table hippo_country";
-        mysqli_query($this->conn, $sql);
+    	$query = mysqli_query($this->conn, $sql);
+        
+        if(!$query) {
+        	$this->log->addError("Drop Facility Query Failed: " . mysqli_error($this->conn));
+        	exit();
+        } else {
+        	$this->log->addInfo("Drop Facility Query OK ");
+        }
     }
     
-    public function syncFacility($valueSet) {
-        $fhirData = $this->getFhirData($valueSet);
+    public function insertFacility($valueSet) {
+   		$fhirData = $this->getFhirData($valueSet)->expansion->contains;
         
-        foreach($fhirData as $f) {
-            if($f->contains != null) { //Verify this works
-                //TODO: Sync County
-                //$this->insertCounty($f->display['value'], $f->display['value']);
-            }
+        $size = iterator_count($fhirData);
+        for ($x = 0; $x < $size; $x++) {
+			$f = $fhirData[$x];
+			echo "Facility Inserted: " . $f->display['value'] . " - " .  $f->code['value'] . "<br>";
+            $this->insertFacilityQuery($x, $f->display['value']);
         }
         
     }
     
-    public function dropPosition() {
-        $sql = "TRUNCATE table hippo_country";
-        mysqli_query($this->conn, $sql);
+    private function insertPositionQuery($id, $name) {
+    
+    	$sql = "INSERT INTO "
+                . "`ihris_manage`.`hippo_position_type` "
+                    . "(`id`, "
+                    . "`parent`, "
+                    . "`last_modified`, "
+                    . "`i2ce_hidden`,"
+                    . "`name` "
+                    . ") "
+                . " VALUES ("
+                	. "'position|" . $id . "', "
+                    . "'NULL', "
+                    . "NOW(), "
+                    . "'0', "
+                    . "'" . mysqli_real_escape_string($this->conn, $name) . "') ";
+    	$query = mysqli_query($this->conn, $sql);
+    	 
+    	$this->log->addInfo("Sql:" . $sql);
+    
+    	if(!$query) {
+    		$this->log->addError("Insert Position Failed: " . mysqli_error($this->conn));
+    		exit();
+    	} else {
+    		$this->log->addInfo("Insert Position Query OK ");
+    	}
     }
     
-    public function syncPosition($valueSet) {
-        $fhirData = $this->getFhirData($valueSet);
+    public function dropPosition() {
+        $sql = "TRUNCATE table hippo_position_type";
+    	$query = mysqli_query($this->conn, $sql);
         
-        foreach($fhirData as $f) {
-            if($f->contains != null) { //Verify this works
-                //TODO: Sync County
-                //$this->insertCounty($f->display['value'], $f->display['value']);
-            }
+        if(!$query) {
+        	$this->log->addError("Drop Position Query Failed: " . mysqli_error($this->conn));
+        	exit();
+        } else {
+        	$this->log->addInfo("Drop Position Query OK ");
+        }
+    }
+    
+    public function insertPosition($valueSet) {
+    	$fhirData = $this->getFhirData($valueSet)->expansion->contains;
+        
+        $size = iterator_count($fhirData);
+        for ($x = 0; $x < $size; $x++) {
+			$f = $fhirData[$x];
+            echo "Position Inserted: " . $f->display['value'] . " - " .  $f->code['value'] . "<br>";
+            $this->insertPositionQuery($x, $f->display['value']);
         }
         
     }
