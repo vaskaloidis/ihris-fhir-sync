@@ -6,29 +6,44 @@ Once you are authenticated: for each iHRIS feature listed below, you can drop th
 
 First, configure the MySQL database:
 ```
-$sync = new ihrisSync();
-$sync->setMysqlConnection("server.ct.apelon.com", "mysql-user", "mysql-password", "ihris_mysql_db");
+$ihris_manage = new ihrisSync();
+$ihris_manage->setMysqlConnection("server.ct.apelon.com", "mysql-user", "mysql-password", "ihris_mysql_db");
 ```
 
 Next, configure the FHIR server:
 ```
-$sync->setFhirServer("http://dts-server.com:8081/dtsserverws/fhir/", "dts-username", "dts-password");
+$ihris_manage->setFhirServer("http://dts-server.com:8081/dtsserverws/fhir/", "dts-username", "dts-password");
 ```
 
 iHRIS data that can be synced, and the corresponding FHIR value-set:
  - Facility Types (valueset-c80-facilitycodes)
  - Position Types (HeathCareWorkerTypes)
- - Country
+ - Country 
  - County
  - District
  - Region
 
 ** The value-sets for the last 4 still need to be created.
 
-# Data
-The first revision of ihris-fhir sync only supports two operations: clearing the tables (purging all table-data) and inserting every concept from the value-set.
+# Sync IHRIS Data
+Format: insertTable(Value-Set-Name) and dropTableName()
+Country Sync
+```
+$ihris_manager->dropCountry();
+$ihris_manager->insertCountry("Country-Code-Value-Set"); //Update Value Set Name
+```
 
-To clear the iHRIS data from a table, use one of the following methods.
+Facility Sync
+```
+$ihris_manager->dropFacility();
+$ihris_manager->insertFacility("valueset-c80-facilitycodes");
+```
+HealthCare Worker Type Sync
+```
+$ihris_manager->dropPosition();
+$ihris_manager->insertPosition("HeathCareWorkerTypes");
+```		
+Coming-Soon: County, Region, District (need FHIR Value-Sets created)
 
 ## Purge Data
 ```
