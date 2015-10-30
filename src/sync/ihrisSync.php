@@ -195,6 +195,36 @@ class ihrisSync {
        
     }
     
+    private function insertCountyQuery($id, $name, $district) {
+    	    	$sql = "INSERT INTO "
+                . "`ihris_manage`.`hippo_county` "
+                    . "(`id`, "
+                    . "`parent`, "
+                    . "`last_modified`, "
+                    . "`i2ce_hidden`,"
+                    . "`district`,"
+                    . "`name` "
+                    . ") "
+                . " VALUES ("
+                	. "'facility|" . $id . "', "
+                    . "'NULL', "
+                    . "NOW(), "
+                    . "'0', "
+                    . "'district|" . $district . "',"
+                    . "'" . mysqli_real_escape_string($this->conn, $name) . "') ";
+    	    	
+    	$query = mysqli_query($this->conn, $sql);
+    	 
+    	$this->log->addInfo("Sql:" . $sql);
+    
+    	if(!$query) {
+    		$this->log->addError("Insert County Query Failed: " . mysqli_error($this->conn));
+    		exit();
+    	} else {
+    		$this->log->addInfo("Insert County Type Query OK ");
+    	}
+    }
+    
     public function dropCounty() {
         $sql = "TRUNCATE table hippo_country";
         $query = mysqli_query($this->conn, $sql);
@@ -203,17 +233,24 @@ class ihrisSync {
         	$this->log->addError("Drop County Query Failed: " . mysqli_error($this->conn));
         	exit();
         } else {
+        	echo 'Drop County Query OK <br>';
         	$this->log->addInfo("Drop County Query OK ");
         }
     }
     
-    public function insertCounty($valueSet) {
-        $fhirData = $this->getFhirData($valueSet);
+    /**
+     * You can create a set of County's based on a Value Set and a District ID (that the County's belong to)
+     * @param unknown $valueSet to create the County's from
+     * @param unknown $districtId of all the County's being created here
+     */
+    public function insertCounty($valueSet, $districtId) {
+    $fhirData = $this->getFhirData($valueSet)->expansion->contains;
         
-        foreach($fhirData as $f) {
-            if($f->contains != null) { //Verify this works
-                //TODO: insert County - $this->insertCountyQuery($f->display['value'], $f->display['value']);
-            }
+        $size = iterator_count($fhirData);
+        for ($x = 0; $x < $size; $x++) {
+			$f = $fhirData[$x];
+			echo "County Inserted: " . $f->display['value'] . " - " .  $f->code['value'] . "<br>";
+            $this->insertFacilityQuery($x, $f->display['value'], $districtId); 
         }
         
     }
@@ -266,7 +303,6 @@ class ihrisSync {
 			echo "Facility Inserted: " . $f->display['value'] . " - " .  $f->code['value'] . "<br>";
             $this->insertFacilityQuery($x, $f->display['value']);
         }
-        
     }
     
     private function insertPositionQuery($id, $name) {
