@@ -2,10 +2,6 @@
 
 namespace APELON\ihrisFhirSync;
 
-
-use Monolog\Logger;
-use Monolog\Handler\StreamHandler;
-
 /**
  * Description of ihrisSync
  *
@@ -16,10 +12,7 @@ class ihrisSync {
     private $conn, $dtsServer, $dtsUser, $dtsPassword;
     
     public function __construct() {
-    	$this->log = new Logger('fhir-ihris');
-    	$this->log->pushHandler(new StreamHandler('./sync.log', Logger::INFO));
-    	$this->log->addInfo("Logger Initialized");
-    	echo "ihris-sync initialized ok<br>";
+		//Construct
     }
     
     
@@ -37,10 +30,10 @@ class ihrisSync {
         $this->conn = mysqli_connect($url, $user, $password, $db);
         
         if(mysqli_connect_errno()) {
-        	$this->log->addError("Database Connection Failure: " . mysqli_connect_error());
+			return true;
         	exit();
         } else {
-        	$this->log->addInfo("Database OK");
+        	return  false;
         }
         
     }
@@ -74,19 +67,15 @@ class ihrisSync {
         	$xml = file_get_contents($url, false, $context);
         } catch(Exception $e) {
         	echo "Failure connecting to DTS FHIR Server";
-        	$this->log->addError("Failure connecting to DTS FHIR Server");
-        	$this->log->addError((String) $e->getMessage() . "<br>" . $e->getTraceAsString());
+        	return false;
         }
         
         if($xml != null && $xml) {
-        	$this->log->addInfo("FHIE fetch OK");
-        	
         	$xml = simplexml_load_string($xml);
-        	//var_dump($xml->expansion); //TODO: Remove after testing
-        	//$fhir = new SimpleXMLElement($xml);
+        	//var_dump($xml->expansion); //Keep for Testing
         	return $xml;
         } else {
-        	$this->log->addError("Error Fetching XML using file_get_contents()");		
+        	return false;		
         }
     }
     
@@ -95,10 +84,10 @@ class ihrisSync {
         $query = mysqli_query($this->conn, $sql);
         
         if(!$query) {
-        	$this->log->addError("Drop Country Query Failed: " . mysqli_error($this->conn));
+        	return false;
         	exit();
         } else {
-        	$this->log->addInfo("Drop Country Query OK ");
+        	return true;
         }
     }
     
@@ -130,18 +119,21 @@ class ihrisSync {
                     . "'1') ";
             $query = mysqli_query($this->conn, $sql);
             
-            $this->log->addInfo("Sql:" . $sql);
+            echo '<b>' . $sql  . '</b><br>';
             
             if(!$query) {
-            	$this->log->addError("Insert Country Query Failed: " . mysqli_error($this->conn));
+            	return false;
             	exit();
             } else {
-            	$this->log->addInfo("Insert Country Query OK ");
+            	return true;
             }
     }
     
     public function insertCountry($valueSet) {
         $fhirData = $this->getFhirData($valueSet)->expansion->contains;
+        if(!$fhirData) {
+        	return false;
+        }
         $size = iterator_count($fhirData);
         for ($x = 0; $x < $size; $x++) {
 			$f = $fhirData[$x];
@@ -150,21 +142,38 @@ class ihrisSync {
         }
     }
     
+    public function fetchCountries() {
+    	$sql = "SELECT * FROM `hippo_country`";
+    	$query = mysqli_query($this->conn, $sql);
+    	if(mysqli_errno($this->conn)) {
+    		echo 'MySQL Query Error, SQL: ' . $sql . ' ERROR: ' . mysqli_error($this->conn);
+    		return false;
+    	} else {
+    		$posts = array();
+    		while($row = mysqli_fetch_array($query, MYSQLI_BOTH)) {
+    			$posts[] = $row;
+    		}
+    		return  $posts;
+    	}
+    	
+    }
+    
     public function dropRegion() {
         $sql = "TRUNCATE table hippo_country";
         $query = mysqli_query($this->conn, $sql);
         
         if(!$query) {
-        	$this->log->addError("Drop Region Query Failed: " . mysqli_error($this->conn));
-        	exit();
+        	return false;
         } else {
-        	$this->log->addInfo("Drop Region Query OK ");
+        	return true;
         }
     }
     
     public function insertRegion($valueSet) {
         $fhirData = $this->getFhirData($valueSet);
-        
+        if(!$fhirData) {
+        	return false;
+        }
         foreach($fhirData as $f) {
             if($f->contains != null) { //Verify this works
             ////TODO: insert Region - $this->insertRegionQuery($f->display['value'], $f->display['value']);
@@ -177,16 +186,17 @@ class ihrisSync {
    		$query = mysqli_query($this->conn, $sql);
         
         if(!$query) {
-        	$this->log->addError("Drop District Query Failed: " . mysqli_error($this->conn));
-        	exit();
+        	return false;
         } else {
-        	$this->log->addInfo("Drop District Query OK ");
+        	return true;
         }
     }
     
     public function insertDistrict() {
         $fhirData = $this->getFhirData($valueSet);
-        
+        if(!$fhirData) {
+        	return false;
+        }
         foreach($fhirData as $f) {
             if($f->contains != null) { //Verify this works
                 //$this->insertDistrictQuery($f->display['value'], $f->display['value']); - TODO: District
@@ -215,13 +225,10 @@ class ihrisSync {
     	    	
     	$query = mysqli_query($this->conn, $sql);
     	 
-    	$this->log->addInfo("Sql:" . $sql);
-    
     	if(!$query) {
-    		$this->log->addError("Insert County Query Failed: " . mysqli_error($this->conn));
-    		exit();
+    		return false;
     	} else {
-    		$this->log->addInfo("Insert County Type Query OK ");
+    		return true;
     	}
     }
     
@@ -230,11 +237,9 @@ class ihrisSync {
         $query = mysqli_query($this->conn, $sql);
         
         if(!$query) {
-        	$this->log->addError("Drop County Query Failed: " . mysqli_error($this->conn));
-        	exit();
+        	return false;
         } else {
-        	echo 'Drop County Query OK <br>';
-        	$this->log->addInfo("Drop County Query OK ");
+        	return true;
         }
     }
     
@@ -244,8 +249,10 @@ class ihrisSync {
      * @param unknown $districtId of all the County's being created here
      */
     public function insertCounty($valueSet, $districtId) {
-    $fhirData = $this->getFhirData($valueSet)->expansion->contains;
-        
+	    $fhirData = $this->getFhirData($valueSet)->expansion->contains;
+	    if(!$fhirData) {
+	    	return false;
+	    }
         $size = iterator_count($fhirData);
         for ($x = 0; $x < $size; $x++) {
 			$f = $fhirData[$x];
@@ -272,31 +279,29 @@ class ihrisSync {
                     . "'" . mysqli_real_escape_string($this->conn, $name) . "') ";
     	$query = mysqli_query($this->conn, $sql);
     	
-    	$this->log->addInfo("Sql:" . $sql);
-    
     	if(!$query) {
-    		$this->log->addError("Insert Facility Type Query Failed: " . mysqli_error($this->conn));
-    		exit();
+    		return false;
     	} else {
-    		$this->log->addInfo("Insert Facility Type Query OK ");
+    		return true;
     	}
     }
     
     public function dropFacility() {
-        $sql = "TRUNCATE table hippo_country";
+        $sql = "TRUNCATE table hippo_facility_type";
     	$query = mysqli_query($this->conn, $sql);
         
         if(!$query) {
-        	$this->log->addError("Drop Facility Query Failed: " . mysqli_error($this->conn));
-        	exit();
+        	return false;
         } else {
-        	$this->log->addInfo("Drop Facility Query OK ");
+        	return true;
         }
     }
     
     public function insertFacility($valueSet) {
    		$fhirData = $this->getFhirData($valueSet)->expansion->contains;
-        
+   		if(!$fhirData) {
+   			return false;
+   		}
         $size = iterator_count($fhirData);
         for ($x = 0; $x < $size; $x++) {
 			$f = $fhirData[$x];
@@ -305,8 +310,39 @@ class ihrisSync {
         }
     }
     
-    private function insertPositionQuery($id, $name) {
+    public function fetchFacilities() {
+    	$sql = "SELECT * FROM hippo_facility_type";
+    	$query = mysqli_query($this->conn, $sql);
+    	if(mysqli_errno($this->conn)) {
+    		echo 'MySQL Query Error, SQL: ' . $sql . ' ERROR: ' . mysqli_error($this->conn);
+    		return false;
+    	} else {
+    		$posts = array();
+    		while($row = mysqli_fetch_array($query, MYSQLI_BOTH)) {
+    			$posts[] = $row;
+    		}
+    		return  $posts;
+    	}
+    	
+    }
     
+    public function fetchPositions() {
+    	$sql = "SELECT * FROM hippo_position_type";
+    	$query = mysqli_query($this->conn, $sql);
+    	if(mysqli_errno($this->conn)) {
+    		echo 'MySQL Query Error, SQL: ' . $sql . ' ERROR: ' . mysqli_error($this->conn);
+    		return false;
+    	} else {
+    		$posts = array();
+    		while($row = mysqli_fetch_array($query, MYSQLI_BOTH)) {
+    			$posts[] = $row;
+    		}
+    		return  $posts;
+    	}
+    	
+    }
+    
+    private function insertPositionQuery($id, $name) {
     	$sql = "INSERT INTO "
                 . "`ihris_manage`.`hippo_position_type` "
                     . "(`id`, "
@@ -323,39 +359,33 @@ class ihrisSync {
                     . "'" . mysqli_real_escape_string($this->conn, $name) . "') ";
     	$query = mysqli_query($this->conn, $sql);
     	 
-    	$this->log->addInfo("Sql:" . $sql);
-    
     	if(!$query) {
-    		$this->log->addError("Insert Position Failed: " . mysqli_error($this->conn));
-    		exit();
+    		return false;
     	} else {
-    		$this->log->addInfo("Insert Position Query OK ");
+    		return true;
     	}
     }
     
     public function dropPosition() {
-        $sql = "TRUNCATE table hippo_position_type";
+        $sql = "TRUNCATE table `hippo_position_type`";
     	$query = mysqli_query($this->conn, $sql);
-        
         if(!$query) {
-        	$this->log->addError("Drop Position Query Failed: " . mysqli_error($this->conn));
-        	exit();
+        	return false;
         } else {
-        	$this->log->addInfo("Drop Position Query OK ");
+        	return true;
         }
     }
     
     public function insertPosition($valueSet) {
     	$fhirData = $this->getFhirData($valueSet)->expansion->contains;
-        
+    	if(!$fhirData) {
+    		return false;
+    	}
         $size = iterator_count($fhirData);
         for ($x = 0; $x < $size; $x++) {
 			$f = $fhirData[$x];
             echo "Position Inserted: " . $f->display['value'] . " - " .  $f->code['value'] . "<br>";
             $this->insertPositionQuery($x, $f->display['value']);
         }
-        
     }
-    
-   
 }
